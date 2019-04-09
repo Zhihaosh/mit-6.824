@@ -1,5 +1,11 @@
 package mapreduce
 
+import (
+	"encoding/json"
+	"log"
+	"os"
+)
+
 func doReduce(
 	jobName string, // the name of the whole MapReduce job
 	reduceTask int, // which reduce task this is
@@ -16,7 +22,38 @@ func doReduce(
 	// You'll need to read one intermediate file from each map task;
 	// reduceName(jobName, m, reduceTask) yields the file
 	// name from map task m.
-	//
+	var keyvalue KeyValue
+	var m map[string][]string
+	m = make(map[string][]string)
+	for i := 0; i < nMap; i++ {
+		filename := reduceName(jobName, i, reduceTask)
+		file, err := os.Open(filename)
+		if err != nil {
+			log.Fatal(err)
+		}
+		decoder := json.NewDecoder(file)
+		for {
+			err := decoder.Decode(&keyvalue)
+			if err != nil {
+				break
+			}
+			if _, ok := m[keyvalue.Key]; !ok {
+				m[keyvalue.Key] = make([]string, 0)
+			}
+			m[keyvalue.Key] = append(m[keyvalue.Key], keyvalue.Value)
+		}
+		file.Close()
+	}
+	file, err := os.OpenFile(outFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		log.Fatalf("failed opening file: %s", err)
+	}
+
+	enc := json.NewEncoder(file)
+	for key, values := range m {
+		enc.Encode(KeyValue{key, reduceF(key, values)})
+	}
+	file.Close()
 	// Your doMap() encoded the key/value pairs in the intermediate
 	// files, so you will need to decode them. If you used JSON, you can
 	// read and decode by creating a decoder and repeatedly calling
