@@ -25,20 +25,27 @@ func schedule(jobName string, mapFiles []string, nReduce int, phase jobPhase, re
 		ntasks = nReduce
 		n_other = len(mapFiles)
 	}
-
 	fmt.Printf("Schedule: %v %v tasks (%d I/Os)\n", ntasks, phase, n_other)
-
 	// All ntasks tasks have to be scheduled on workers. Once all tasks
 	// have completed successfully, schedule() should return.
 	//
 	// Your code here (Part III, Part IV).
+
+	readyChan := make(chan string, ntasks)
 	var wg sync.WaitGroup
 	if phase == mapPhase {
 		for idx, _ := range mapFiles {
 			go func(idx int) {
 				wg.Add(1)
 				defer wg.Done()
-				worker := <-registerChan
+				var worker string
+				select {
+				case worker = <-registerChan:
+					readyChan <- worker
+					worker = <-readyChan
+				case worker = <-readyChan:
+
+				}
 				arg := new(DoTaskArgs)
 				arg.JobName = jobName
 				arg.File = mapFiles[idx]
@@ -46,7 +53,7 @@ func schedule(jobName string, mapFiles []string, nReduce int, phase jobPhase, re
 				arg.TaskNumber = idx
 				arg.NumOtherPhase = n_other
 				call(worker, "Worker.DoTask", arg, nil)
-				registerChan <- worker
+				readyChan <- worker
 			}(idx)
 		}
 	} else {
@@ -54,7 +61,14 @@ func schedule(jobName string, mapFiles []string, nReduce int, phase jobPhase, re
 			go func(i int) {
 				wg.Add(1)
 				defer wg.Done()
-				worker := <-registerChan
+				var worker string
+				select {
+				case worker = <-registerChan:
+					readyChan <- worker
+					worker = <-readyChan
+				case worker = <-readyChan:
+
+				}
 				arg := new(DoTaskArgs)
 				arg.JobName = jobName
 				arg.File = ""
@@ -62,7 +76,7 @@ func schedule(jobName string, mapFiles []string, nReduce int, phase jobPhase, re
 				arg.TaskNumber = i
 				arg.NumOtherPhase = n_other
 				call(worker, "Worker.DoTask", arg, nil)
-				registerChan <- worker
+				readyChan <- worker
 			}(i)
 		}
 	}
