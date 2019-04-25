@@ -44,7 +44,6 @@ func schedule(jobName string, mapFiles []string, nReduce int, phase jobPhase, re
 					readyChan <- worker
 					worker = <-readyChan
 				case worker = <-readyChan:
-
 				}
 				arg := new(DoTaskArgs)
 				arg.JobName = jobName
@@ -52,7 +51,14 @@ func schedule(jobName string, mapFiles []string, nReduce int, phase jobPhase, re
 				arg.Phase = phase
 				arg.TaskNumber = idx
 				arg.NumOtherPhase = n_other
-				call(worker, "Worker.DoTask", arg, nil)
+				for !call(worker, "Worker.DoTask", arg, nil) {
+					select {
+					case worker = <-registerChan:
+						readyChan <- worker
+						worker = <-readyChan
+					case worker = <-readyChan:
+					}
+				}
 				readyChan <- worker
 			}(idx)
 		}
@@ -60,22 +66,30 @@ func schedule(jobName string, mapFiles []string, nReduce int, phase jobPhase, re
 		for i := 0; i < nReduce; i++ {
 			go func(i int) {
 				wg.Add(1)
-				defer wg.Done()
 				var worker string
 				select {
 				case worker = <-registerChan:
 					readyChan <- worker
 					worker = <-readyChan
 				case worker = <-readyChan:
-
 				}
+				defer func() {
+					wg.Done()
+				}()
 				arg := new(DoTaskArgs)
 				arg.JobName = jobName
 				arg.File = ""
 				arg.Phase = phase
 				arg.TaskNumber = i
 				arg.NumOtherPhase = n_other
-				call(worker, "Worker.DoTask", arg, nil)
+				for !call(worker, "Worker.DoTask", arg, nil) {
+					select {
+					case worker = <-registerChan:
+						readyChan <- worker
+						worker = <-readyChan
+					case worker = <-readyChan:
+					}
+				}
 				readyChan <- worker
 			}(i)
 		}
