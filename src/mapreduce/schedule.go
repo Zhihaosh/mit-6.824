@@ -35,8 +35,8 @@ func schedule(jobName string, mapFiles []string, nReduce int, phase jobPhase, re
 	var wg sync.WaitGroup
 	if phase == mapPhase {
 		for idx, _ := range mapFiles {
+			wg.Add(1)
 			go func(idx int) {
-				wg.Add(1)
 				defer wg.Done()
 				var worker string
 				select {
@@ -64,8 +64,9 @@ func schedule(jobName string, mapFiles []string, nReduce int, phase jobPhase, re
 		}
 	} else {
 		for i := 0; i < nReduce; i++ {
+			wg.Add(1)
 			go func(i int) {
-				wg.Add(1)
+				defer wg.Done()
 				var worker string
 				select {
 				case worker = <-registerChan:
@@ -73,9 +74,7 @@ func schedule(jobName string, mapFiles []string, nReduce int, phase jobPhase, re
 					worker = <-readyChan
 				case worker = <-readyChan:
 				}
-				defer func() {
-					wg.Done()
-				}()
+
 				arg := new(DoTaskArgs)
 				arg.JobName = jobName
 				arg.File = ""
@@ -90,6 +89,7 @@ func schedule(jobName string, mapFiles []string, nReduce int, phase jobPhase, re
 					case worker = <-readyChan:
 					}
 				}
+				fmt.Printf("reduce task %d done\n", i)
 				readyChan <- worker
 			}(i)
 		}
